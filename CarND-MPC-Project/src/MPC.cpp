@@ -51,7 +51,7 @@ class FG_eval {
     float a_weight = 10.0;
     float delta_var_weight = 500.0;
 
-    // Cost for cross-track-error and direction error
+    // Cost for cross-track-error, direction error and velocity error
     for (unsigned int t=0; t<N; t++){
        fg[0] += CppAD::pow(vars[cte_start + t], 2);
        fg[0] += CppAD::pow(vars[epsi_start + t], 2);

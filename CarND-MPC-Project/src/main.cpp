@@ -116,6 +116,7 @@ int main() {
           double steer_value;
           double throttle_value;
 
+	  // Preprocessing
           // Transform the waypoints to the car reference
           Eigen::MatrixXd waypoints = transformWaypointsToCar(px, py, psi, ptsx, ptsy);
 
