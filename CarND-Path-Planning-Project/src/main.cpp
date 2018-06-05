@@ -164,6 +164,327 @@ vector<double> getXY(double s, double d, const vector<double> &maps_s, const vec
 
 }
 
+/* Get info about an existing vehicle ahead. */
+vector<double> get_vehicle_ahead(vector<vector<double>> sensor_fusion, vector<double> trajectory, double distance){
+
+        // Vector of velocity, distance, vehicle was detected
+	vector<double> closest_car_ahead = {100,9999999,0};
+
+	double car_s = trajectory[0];
+        int lane = (int)trajectory[4];
+        double prev_size = trajectory[5];
+
+        for(int i=0;i < sensor_fusion.size(); i++){
+
+              float d = sensor_fusion[i][6];
+
+              if(d < (2+4*lane+2) && d > (2+4*lane-2)){
+
+                     double vx = sensor_fusion[i][3];
+                     double vy = sensor_fusion[i][4];
+                     double check_speed = sqrt(vx*vx+vy*vy);
+                     double check_car_s = sensor_fusion[i][5];
+
+                     check_car_s += ((double)prev_size*.02*check_speed);
+
+                     if((check_car_s > car_s) && ((check_car_s-car_s) < distance)){
+                              if ((check_car_s-car_s) < closest_car_ahead[1]){
+                                  closest_car_ahead[1] = (check_car_s-car_s);
+                                  closest_car_ahead[0] = check_speed;
+				  closest_car_ahead[2] = 1;
+                              }
+                       }
+               }
+         }
+
+         return closest_car_ahead;
+}
+
+/* Get info about anexisting vehicle behind */
+vector<double> get_vehicle_behind(vector<vector<double>> sensor_fusion, vector<double> trajectory, double distance){
+
+        // Vector of velocity, distance, vehicle was detected
+        vector<double> closest_car_behind = {100,999999,0};
+
+	double car_s = trajectory[0];
+	int lane = (int)trajectory[4];
+	double prev_size = trajectory[5];
+
+        for(int i=0;i < sensor_fusion.size(); i++){
+
+              float d = sensor_fusion[i][6];
+
+              if(d < (2+4*lane+2) && d > (2+4*lane-2)){
+
+                     double vx = sensor_fusion[i][3];
+                     double vy = sensor_fusion[i][4];
+                     double check_speed = sqrt(vx*vx+vy*vy);
+                     double check_car_s = sensor_fusion[i][5];
+
+                     check_car_s += ((double)prev_size*.02*check_speed);
+
+                     if((check_car_s < car_s) && (abs(check_car_s-car_s) < distance)){
+                              if ((check_car_s-car_s) < closest_car_behind[1]){
+				  closest_car_behind[0] = (check_speed);
+				  closest_car_behind[1] = (check_car_s-car_s);
+				  closest_car_behind[2] = 1;
+                              }
+                       }
+               }
+         }
+
+         return closest_car_behind;
+}
+
+
+/* Check if we have a vehicle around our ego vehicle preventing
+   a secure change lane trajectory */
+vector<double> get_vehicle_around(vector<vector<double>> sensor_fusion, vector<double> trajectory, double distance){
+
+        // Vector of velocity, distance
+        vector<double> closest_car = {100,999999,0};
+
+        double car_s = trajectory[3];
+        int lane = (int)trajectory[4];
+        double prev_size = trajectory[5];
+
+        for(int i=0;i < sensor_fusion.size(); i++){
+
+              float d = sensor_fusion[i][6];
+
+              if(d < (2+4*lane+2) && d > (2+4*lane-2)){
+
+                     double vx = sensor_fusion[i][3];
+                     double vy = sensor_fusion[i][4];
+                     double check_speed = sqrt(vx*vx+vy*vy);
+                     double check_car_s = sensor_fusion[i][5];
+
+                     if (abs(check_car_s-car_s) < distance){
+                              if ((check_car_s-car_s) < closest_car[1]){
+                                  closest_car[0] = (check_speed);
+                                  closest_car[1] = abs(check_car_s-car_s);
+				  closest_car[2] = 1;
+                              }
+                       }
+               }
+         }
+
+         return closest_car;
+}
+
+
+/*TODO: We need to implement the Prepare Change lane, which will mantain the
+ velocity of the lane, then, in the lane change we need to check if there is some
+car in the lane which we will change*/
+vector<string> successor_states(string state, int lane){
+
+	vector<string> states;
+
+	states.push_back("KL");
+
+	if(state.compare("KL") == 0){
+		states.push_back("LCL");
+		states.push_back("LCR");
+		states.push_back("LCL2");
+	} 
+
+	return states;
+}
+
+/* Trajectory keeping the same lane*/
+vector<double> keep_lane_trajectory(vector<vector<double>> sensor_fusion, vector<double> trajectory){
+
+	vector<double> new_trajectory;
+
+	vector<double> vehicle_ahead = get_vehicle_ahead(sensor_fusion,trajectory,20);
+
+	if(vehicle_ahead[2] != 0){
+		new_trajectory.push_back(trajectory[0]);
+		new_trajectory.push_back(trajectory[1]);
+		new_trajectory.push_back(vehicle_ahead[0]);
+		new_trajectory.push_back(trajectory[3]);
+		new_trajectory.push_back(trajectory[4]);
+		new_trajectory.push_back(trajectory[5]);
+		return new_trajectory;
+	} else {
+		new_trajectory.push_back(trajectory[0]);
+                new_trajectory.push_back(trajectory[1]);
+                new_trajectory.push_back(49);
+                new_trajectory.push_back(trajectory[3]);
+                new_trajectory.push_back(trajectory[4]);
+                new_trajectory.push_back(trajectory[5]);
+		return new_trajectory;
+	}
+
+}
+
+/* Generate a change lane left trajectory */
+vector<double> lane_change_left_trajectory(vector<vector<double>> sensor_fusion, vector<double> trajectory){
+
+        vector<double> new_trajectory = {0,0,-900,0,0,0};
+
+	trajectory[4] = trajectory[4] - 1;
+
+        vector<double> vehicle_ahead = get_vehicle_ahead(sensor_fusion,trajectory,40);
+	double max_vel = 49.0;
+	if((vehicle_ahead[0] > 0) && (vehicle_ahead[0] < max_vel)){
+		max_vel = vehicle_ahead[0];
+	}
+
+        if((get_vehicle_around(sensor_fusion,trajectory,15)[2] == 0) && (get_vehicle_behind(sensor_fusion,trajectory,15)[2] == 0) && (trajectory[4]>=0)){
+                new_trajectory[0] = (trajectory[0]);
+                new_trajectory[1] = (trajectory[1]);
+		new_trajectory[2] = (max_vel);
+                new_trajectory[3] = (trajectory[3]);
+		new_trajectory[4] = (trajectory[4]);
+		new_trajectory[5] = (trajectory[5]);
+		cout<<"No vehicle around to left change..."<<endl;
+		return new_trajectory;
+        } else {
+		cout<<"Vehicle near left!"<<endl;
+                return new_trajectory;
+        }
+
+}
+
+
+/* Check two lane left to generate a trajectory */
+vector<double> lane_change2_left_trajectory(vector<vector<double>> sensor_fusion, vector<double> trajectory){
+
+        vector<double> new_trajectory = {0,0,-900,0,0,0};
+
+	trajectory[4] = trajectory[4]-1;
+
+	double vehicle_around = get_vehicle_around(sensor_fusion,trajectory,15)[2];
+	double vehicle_behind = get_vehicle_behind(sensor_fusion,trajectory,15)[2];
+        trajectory[4] = trajectory[4] - 1;
+	vehicle_around *= get_vehicle_around(sensor_fusion,trajectory,15)[2];
+        vehicle_behind *= get_vehicle_behind(sensor_fusion,trajectory,15)[2];
+
+        vector<double> vehicle_ahead = get_vehicle_ahead(sensor_fusion,trajectory,30);
+        double max_vel = 49.0;
+        if((vehicle_ahead[0] > 0) && (vehicle_ahead[0] < max_vel)){
+                max_vel = vehicle_ahead[0];
+        }
+
+        if((vehicle_around == 0) && (vehicle_behind == 0) && (trajectory[4]>=0)){
+                new_trajectory[0] = (trajectory[0]);
+                new_trajectory[1] = (trajectory[1]);
+                new_trajectory[2] = (max_vel);
+                new_trajectory[3] = (trajectory[3]);
+                new_trajectory[4] = (trajectory[4]+1);
+                new_trajectory[5] = (trajectory[5]);
+                return new_trajectory;
+        } else {
+                cout<<"Vehicle near left!"<<endl;
+                return new_trajectory;
+        }
+
+}
+
+
+/* Generate a change right lane trajectory */
+vector<double> lane_change_right_trajectory(vector<vector<double>> sensor_fusion, vector<double> trajectory){
+
+        vector<double> new_trajectory = {0,0,-900,0,0,0};
+
+	trajectory[4] = trajectory[4] + 1;
+
+        vector<double> vehicle_ahead = get_vehicle_ahead(sensor_fusion,trajectory,40);
+
+	double max_vel = 49.0;
+        if((vehicle_ahead[0] > 0) && (vehicle_ahead[0] < max_vel)){
+                max_vel = vehicle_ahead[0];
+        }
+
+
+        if((get_vehicle_around(sensor_fusion,trajectory,15)[2] == 0) && (get_vehicle_behind(sensor_fusion,trajectory,15)[2] == 0) && trajectory[4] <= 2){
+                new_trajectory[0] = (trajectory[0]);
+                new_trajectory[1] = (trajectory[1]);
+		new_trajectory[2] = (max_vel);
+                new_trajectory[3] = (trajectory[3]);
+                new_trajectory[4] = (trajectory[4]);
+                new_trajectory[5] = (trajectory[5]);
+		cout<<"No vehicle around to right change..."<<endl;
+                return new_trajectory;
+        } else {
+		cout<<"Vehicle near right!"<<endl;
+                return new_trajectory;
+        }
+
+}
+
+
+/* Generate trajectory based on desired state */
+vector<double> generate_trajectory(string state, vector<vector<double>> sensor_fusion, vector<double> trajectory){
+
+	vector<double> new_trajectory;
+	if(state.compare("KL") == 0){
+		new_trajectory = keep_lane_trajectory(sensor_fusion, trajectory);
+	} else if(state.compare("LCL")==0){
+		new_trajectory = lane_change_left_trajectory(sensor_fusion, trajectory);
+	} else if(state.compare("LCR") == 0){
+		new_trajectory = lane_change_right_trajectory(sensor_fusion,trajectory);
+	} else if(state.compare("LCL2") == 0){
+                new_trajectory = lane_change2_left_trajectory(sensor_fusion,trajectory);
+        }
+
+	return new_trajectory;
+
+}
+
+
+/* Calculate the cost for a given trajectory */
+float calculate_cost(vector<vector<double>> sensor_fusion, vector<double> new_trajectory, vector<double> trajectory){
+
+	// Changed_lane is used to track how many cycles were passed
+	// since our last lane change (prevent frequent lane changes)
+	static int changed_lane = 200;
+	static int last_lane = -1;
+
+	float change_line_cost = 0;
+	if((trajectory[4] != new_trajectory[4]) && changed_lane > 0){
+		change_line_cost = changed_lane;
+	}
+
+
+	if(trajectory[4] != last_lane){
+		last_lane = trajectory[4];
+		changed_lane = 200;
+	} else {
+		changed_lane = changed_lane - 1;
+	}
+
+	// Our cost function is a simple "best speed, low cost"
+	// Our trajectory functions return -900 for speed when we get
+	// Some situation that prevents a specific behavior
+	return (49-new_trajectory[2]+change_line_cost);
+}
+
+
+/* This function chooses the next state based on the best trajectory cost */
+vector<double> choose_next_state(string state, vector<vector<double>> sensor_fusion,vector<double> trajectory){
+
+	vector<string> possible_successor_states = successor_states(state, trajectory[4]);
+
+	double best_trajectory_cost = 999999999;
+	vector<double> best_trajectory;
+
+	for(int i=0; i<possible_successor_states.size(); i++){
+		
+		vector<double> trajectory_for_state = generate_trajectory(possible_successor_states[i], sensor_fusion, trajectory);
+		double cost_for_state = calculate_cost(sensor_fusion,trajectory_for_state, trajectory);
+		cout<<"CHOOSE_NEXT_STATE>"<<possible_successor_states[i]<<"/"<<cost_for_state<<"/"<<trajectory_for_state[2]<<"/"<<trajectory_for_state[4]<<endl;
+		if(cost_for_state < best_trajectory_cost){
+			best_trajectory_cost = cost_for_state;
+			best_trajectory = trajectory_for_state;
+		}
+	}
+
+	return best_trajectory;
+}
+
+
 int main() {
   uWS::Hub h;
 
@@ -205,11 +526,14 @@ int main() {
   // start lane
   int lane = 1;
 
+  // state
+  string state = "KL";
+
   // reference for velocity
-  double ref_vel = 49.5;
+  double ref_vel = 0;
 
 
-  h.onMessage([&ref_vel,&lane,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
+  h.onMessage([&ref_vel,&lane,&state,&map_waypoints_x,&map_waypoints_y,&map_waypoints_s,&map_waypoints_dx,&map_waypoints_dy](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length,
                      uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
@@ -255,64 +579,34 @@ int main() {
           	// TODO: define a path made up of (x,y) points that the car will visit sequentially every .02 seconds
 
 		int prev_size = previous_path_x.size();
-
+		double curr_car_s = car_s;
 
 		if (prev_size > 0){
 			car_s = end_path_s;
+			car_d = end_path_d;
 		}
 
-		bool too_close = false;
-		bool left_lane_free = true;
-		bool right_lane_free = true;
+		// Create the vector of our current trajectory
+		vector<double> curr_trajectory = {car_s, car_d, ref_vel, curr_car_s, lane, prev_size}; 
 
-		for(int i=0;i < sensor_fusion.size(); i++){
+		// Choose the next trajectory based on his cost
+		curr_trajectory = choose_next_state(state, sensor_fusion, curr_trajectory);
 
-			float d = sensor_fusion[i][6];
+		cout<<"Current state:"<<state<<endl;
+		lane = (int) curr_trajectory[4];
 
-			if(d < (2+4*lane+2) && d > (2+4*lane-2)){
-
-				double vx = sensor_fusion[i][3];
-				double vy = sensor_fusion[i][4];
-				double check_speed = sqrt(vx*vx+vy*vy);
-				double check_car_s = sensor_fusion[i][5];
-
-
-				check_car_s += ((double)prev_size*.02*check_speed);
-
-				if((check_car_s > car_s) && ((check_car_s-car_s) < 30)){
-					too_close = true;
-				}
-
-
-				if((abs(check_car_s-car_s) < 30) && d == lane-1){
-					left_lane_free = false;
-				}
-
-				if((abs(check_car_s-car_s) < 30) && d == lane+1){
-                                        right_lane_free = false;
-                                }
-
-			}
-
-		}
-
-
-		if(too_close){
-			if((left_lane_free) && lane>0){
-				lane -= 1;
-			} else if((right_lane_free) && lane <2){
-				lane += 1;
-			}
-			ref_vel -= 0.5;
-
-		} else {
-
-			if(ref_vel < 47){
-				ref_vel+=0.5;
+		if (ref_vel > curr_trajectory[2]){
+			// If we need a emergency break
+			if(ref_vel - curr_trajectory[2] > 15){
+				ref_vel -= 0.8;
+			} else {
+				ref_vel -= 0.5;
 			}
 		}
+		else if (ref_vel < curr_trajectory[2]){
+			ref_vel += 0.5;
+		}
 
-		cout<<"prev_size"<<prev_size<<endl;
 		// list of widely space waypoints (x,y)
 		vector<double> ptsx;
 		vector<double> ptsy;
@@ -376,7 +670,6 @@ int main() {
 		}
 
 
-
 		tk::spline s;
 
 		s.set_points(ptsx,ptsy);
@@ -395,7 +688,7 @@ int main() {
 
 		double x_add_on = 0;
 
-		for(int i = 1; i<=50-previous_path_x.size(); i++){
+		for(int i = 1; i<=30-previous_path_x.size(); i++){
 
 			double N = (target_dist/(.02*ref_vel/2.24));
 			double x_point = x_add_on+(target_x)/N;
@@ -411,22 +704,9 @@ int main() {
 
 			x_point += ref_x;
 			y_point += ref_y;
-			cout<<"car_x:"<<car_x<<endl;
-			cout<<"car_y:"<<car_y<<endl;
-			cout<<"x_point:"<<x_point<<endl;
-			cout<<"y_point:"<<y_point<<endl;
 			next_x_vals.push_back(x_point);
 			next_y_vals.push_back(y_point);
 		}
-
-		//next_x_vals.clear();
-		//next_y_vals.clear();
-
-		/*for(int i=0;i<50;i++){
-			vector<double> xy = getXY(car_s+0.3*i,6,map_waypoints_s,map_waypoints_x,map_waypoints_y);
-			next_x_vals.push_back(xy[0]);
-			next_y_vals.push_back(xy[1]);
-		}*/
 
 
           	msgJson["next_x"] = next_x_vals;
